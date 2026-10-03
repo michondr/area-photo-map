@@ -1,0 +1,56 @@
+name: area-photo-map
+
+services:
+  app:
+    container_name: area-photo-map_app
+    build: .
+    image: area-photo-map
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://area_photo_map:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/area_photo_map
+      IMAGES_DIR: /app/images
+    volumes:
+      - images:/app/images
+    networks:
+      - default
+      - proxy
+    # 127.0.0.1 binding = local debugging only; real traffic comes through Traefik on the proxy network
+    ports:
+      - "127.0.0.1:${APP_PORT:-3000}:3000"
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy
+      - traefik.http.routers.area-photo-map.rule=Host(`${APP_DOMAIN}`)
+      - traefik.http.routers.area-photo-map.entrypoints=websecure
+      - traefik.http.routers.area-photo-map.tls.certresolver=${CERT_RESOLVER:-letsencrypt}
+      - traefik.http.services.area-photo-map.loadbalancer.server.port=3000
+
+  db:
+    container_name: area-photo-map_db
+    image: postgis/postgis:17-3.5
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: area_photo_map
+      POSTGRES_USER: area_photo_map
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # exposed on loopback so the dev server on the host can connect directly
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U area_photo_map -d area_photo_map"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  pgdata:
+  images:
+
+networks:
+  proxy:
+    external: true
